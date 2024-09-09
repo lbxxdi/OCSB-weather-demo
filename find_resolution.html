@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet"></script>
+<script src="https://unpkg.com/leaflet-geometryutil"></script>
+<script>
+    // Initialize the map
+    var map = L.map('map',{
+        zoomSnap: 0.25,
+    }).setView([13.7312192,100.528163], 18);
+
+    // add scale
+    L.control.scale(
+        {
+            position: 'bottomright',
+            imperial: false
+        }
+    ).addTo(map);
+
+    // Add Google Maps tile layer
+    L.tileLayer('https://www.google.cn/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.google.cn/maps">Google Maps</a>'
+    }).addTo(map);
+
+    // OpenWeatherMap API key
+    var apiKey = 'e753dbe64875e62e0c22cfb98de457f9';
+
+    // Function to fetch weather data
+    function fetchWeather(lat, lon, new_dist, callback) {
+        var url1 = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+        var url2 = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+
+        // Fetch data from both APIs using Promise.all
+        Promise.all([
+            fetch(url1).then(response => response.json()),
+            fetch(url2).then(response => response.json())
+        ])
+        .then(([weatherData, forcastData]) => {
+            callback(lat,lon,weatherData, forcastData, new_dist);
+        })
+        .catch(error => console.error('Error fetching data:', error));
+    }
+
+    var text_ref = "";
+
+    var callback = function(lat,lon,data,forcastData, new_dist) {
+            // console.log(data);
+            // console.log(forcastData);
+            let date = new Date(data.dt * 1000);
+
+            let weatherInfo = `
+                ${data.name}<br>
+                ${data.weather[0].description}<br>
+                ${data.main.temp} °C<br>
+                ${data.main.humidity}%<br>
+                ${data.wind.speed} m/s ${data.wind.deg} deg<br>
+                ${data.rain ? data.rain['1h'] : '0'} mm<br>
+                <br>
+                <br>
+            `;
+
+            forcastData.list.slice(0,10).forEach(ele => {
+                let date = new Date(ele.dt * 1000)
+                date = date.toLocaleString();
+                date = "";
+                weatherInfo += `
+                    ${parseInt(ele.pop*100)}%, ${ele.wind.speed} m/s<br>
+                `;
+            });
+
+            if(text_ref == "") {
+                text_ref = weatherInfo;
+            }
+
+            color = 'green';
+
+            if(text_ref != weatherInfo) {
+
+                color = 'red';
+            }
+
+            // Add marker with popup showing weather information
+            var marker = L.marker([lat, lon],{
+                icon: L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color:${color}; width:6px; height:6px;"></div>`,
+                    iconSize: [6, 6],
+                    iconAnchor: [3, 3]
+                })
+            }).addTo(map);
+        }
+
+    // Map click event
+    map.on('click', function(e) {
+        var lat = e.latlng.lat;
+        var lon = e.latlng.lng;
+
+        fetchWeather(lat, lon, 0, callback);
+
+
+        i_timeout = 0;
+        deg_level = 50;
+        setTimeout(() => {
+            [...Array(15).keys()].forEach((distance) => {
+                [...Array(deg_level).keys()].forEach((deg) => {
+                    deg *= 360/deg_level;
+                    let new_dist = (distance+5)*50;
+
+                    var newLatLon = L.GeometryUtil.destination(e.latlng, deg, new_dist);
+
+                    setTimeout(() => {
+                        fetchWeather(newLatLon.lat, newLatLon.lng, new_dist, callback);
+                    }, i_timeout);
+
+                    i_timeout += 50;
+                });
+            });
+        }, 250);
+    });
+</script>
+
+</body>
+</html>
